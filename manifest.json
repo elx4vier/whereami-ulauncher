@@ -1,14 +1,19 @@
 {
-  "api_version": "3",
-  "authors": "Xavier",
+  "required_api_version": "2",
   "name": "Where Am I?",
-  "icon": "system-run",
-  "instructions": "Digite 'whereami' para ver sua cidade atual.",
-  "triggers": {
-    "location_trigger": {
-      "name": "Localização",
-      "description": "Mostra a cidade onde você está",
-      "keyword": "whereami"
+  "description": "Mostra a cidade atual baseada no Geoclue",
+  "developer_name": "Xavier",
+  "icon": "images/icon.png",
+  "options": {
+    "query_debounce": 0.5
+  },
+  "preferences": [
+    {
+      "id": "whereami_kw",
+      "type": "keyword",
+      "name": "Where Am I",
+      "description": "Palavra-chave para ativar a extensão",
+      "default_value": "whereami"
     }
-  }
+  ]
 }
