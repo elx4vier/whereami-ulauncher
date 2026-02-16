@@ -19,51 +19,46 @@ class WhereAmI(Extension):
 
 
 class KeywordQueryEventListener(EventListener):
-    TIMEOUT_SECONDS = 8
+    TIMEOUT_SECONDS = 5
 
     def on_event(self, event, extension):
         try:
-            # Cria cliente Geoclue corretamente (3 argumentos)
+            # Cria cliente Geoclue
             client = Geoclue.Simple.new_sync(
-                "io.ulauncher.Ulauncher",  # App-id aceito pelo Geoclue
-                Geoclue.AccuracyLevel.CITY,  # Suficiente para cidade/estado
-                None  # cancellable
+                "io.ulauncher.Ulauncher",
+                Geoclue.AccuracyLevel.CITY,
+                None
             )
 
             # Pega localização imediatamente
             loc = client.props.location
-            if loc is None:
-                # Timeout se não tiver localização
-                GLib.timeout_add_seconds(self.TIMEOUT_SECONDS,
-                                         lambda: self._mostrar_erro(extension, "Localização não disponível"))
-                return RenderResultListAction([
-                    ExtensionResultItem(
-                        icon="images/icon.png",
-                        name="🔎 Obtendo localização...",
-                        description="Aguarde um instante...",
-                        on_enter=None
-                    )
-                ])
 
-            lat = loc.get_property("latitude")
-            lon = loc.get_property("longitude")
+            if loc:
+                lat = loc.get_property("latitude")
+                lon = loc.get_property("longitude")
+                if lat is not None and lon is not None:
+                    # tenta geocodificação reversa
+                    resultado = self._geocode(lat, lon)
+                    if resultado:
+                        return self._mostrar_resultado(extension, resultado, lat, lon)
 
-            if lat is None or lon is None:
-                return self._mostrar_erro(extension, "Coordenadas inválidas")
-
-            # Geocodificação reversa (cidade, estado, país)
-            return self._geocode(lat, lon, extension)
+            # Se falhou Geoclue/Nominatim, usa fallback via IP
+            resultado = self._fallback_ip()
+            return self._mostrar_resultado(extension, resultado)
 
         except Exception as e:
-            return self._mostrar_erro(extension, f"Erro ao inicializar Geoclue: {e}")
+            # Qualquer erro, tenta fallback
+            resultado = self._fallback_ip()
+            return self._mostrar_resultado(extension, resultado, error=str(e))
 
-    def _geocode(self, lat, lon, extension):
+    def _geocode(self, lat, lon):
+        """Tenta Nominatim para cidade, estado, país"""
         try:
             url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10&addressdetails=1"
             headers = {"User-Agent": "UlauncherWhereAmI/1.0"}
             resp = requests.get(url, headers=headers, timeout=5)
             if resp.status_code != 200:
-                return self._mostrar_erro(extension, f"Erro HTTP {resp.status_code}")
+                return None
 
             data = resp.json()
             addr = data.get("address", {})
@@ -71,38 +66,55 @@ class KeywordQueryEventListener(EventListener):
             estado = addr.get("state")
             pais = addr.get("country")
 
-            if not cidade or not estado or not pais:
-                return self._mostrar_erro(extension, "Cidade/Estado/País não encontrados")
+            if cidade and estado and pais:
+                return f"{cidade}, {estado} - {pais}"
+            return None
 
-            texto = f"{cidade}, {estado} - {pais}"
+        except:
+            return None
 
-            return RenderResultListAction([
+    def _fallback_ip(self):
+        """Usa IP como fallback para garantir cidade/estado/país"""
+        try:
+            resp = requests.get("https://ipinfo.io/json", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                return f"{data.get('city')}, {data.get('region')} - {data.get('country')}"
+        except:
+            pass
+        return "Localização não disponível"
+
+    def _mostrar_resultado(self, extension, texto, lat=None, lon=None, error=None):
+        """Cria itens do Ulauncher"""
+        items = []
+        if texto:
+            items.append(
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"📍 {texto}",
                     description="Clique para copiar",
                     on_enter=CopyToClipboardAction(texto)
-                ),
+                )
+            )
+            if lat and lon:
+                items.append(
+                    ExtensionResultItem(
+                        icon="images/icon.png",
+                        name="🌐 Abrir no Google Maps",
+                        description="Ver localização no mapa",
+                        on_enter=OpenAction(f"https://www.google.com/maps?q={lat},{lon}")
+                    )
+                )
+        else:
+            items.append(
                 ExtensionResultItem(
                     icon="images/icon.png",
-                    name="🌐 Abrir no Google Maps",
-                    description="Ver localização no mapa",
-                    on_enter=OpenAction(f"https://www.google.com/maps?q={lat},{lon}")
+                    name="❌ Erro ao obter localização",
+                    description=error or "Localização não disponível",
+                    on_enter=None
                 )
-            ])
-
-        except Exception as e:
-            return self._mostrar_erro(extension, f"Erro na geocodificação: {e}")
-
-    def _mostrar_erro(self, extension, mensagem):
-        return RenderResultListAction([
-            ExtensionResultItem(
-                icon="images/icon.png",
-                name="❌ Erro ao obter localização",
-                description=mensagem,
-                on_enter=None
             )
-        ])
+        return RenderResultListAction(items)
 
 
 if __name__ == "__main__":
