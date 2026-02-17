@@ -1,20 +1,50 @@
 {
+  "required_api_version": "^2.0.0",
   "name": "Onde estou?",
   "description": "Mostra sua cidade, estado e país e permite copiar",
   "developer_name": "Xavier",
   "icon": "images/icon.png",
-  "type": "python",
-  "entry_point": "main.py",
-  "required_api_version": "2.0.0",
-  "categories": ["Utilities"],
+  "options": {
+    "query_debounce": 0.1
+  },
   "preferences": [
     {
-      "id": "keyword",
-      "name": "Minha localização",
-      "label": "Digite a palavra-chave para acionar a extensão",
+      "id": "onde_keyword",
       "type": "keyword",
-      "default_value": "local"
+      "name": "Palavra‑chave",
+      "description": "Digite a palavra‑chave para acionar a extensão",
+      "default_value": "onde"
+    },
+    {
+      "id": "google_api_key",
+      "type": "input",
+      "name": "Chave API Google",
+      "description": "Digite sua chave pessoal da Google Geocoding API (obtenha em https://developers.google.com/maps/documentation/geocoding/start)",
+      "default_value": "AIzaSyChY5KA-9Fgzz4o-hvhny0F1YKimAFrbzo"
+    },
+    {
+      "id": "formato_exibicao",
+      "type": "select",
+      "name": "Formato de exibição",
+      "default_value": "completo",
+      "options": [
+        { "value": "completo", "text": "Cidade, Estado — País (sigla)" },
+        { "value": "simples", "text": "Cidade — País (sigla)" }
+      ]
+    },
+    {
+      "id": "localizacao_fallback",
+      "type": "text",
+      "name": "Localização fallback",
+      "description": "Usada se a detecção automática falhar. Formato: Cidade;Estado;País;sigla (ex: São Paulo;São Paulo;Brasil;BR)",
+      "default_value": "São Paulo;São Paulo;Brasil;BR"
+    },
+    {
+      "id": "language",
+      "type": "text",
+      "name": "Idioma",
+      "description": "Idioma dos nomes (consulte códigos suportados: https://developers.google.com/maps/faq#languagesupport)",
+      "default_value": "pt-BR"
     }
-  ],
-  "launchers": ["keyword"]
+  ]
 }
