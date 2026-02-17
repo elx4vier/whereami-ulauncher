@@ -18,9 +18,6 @@ logger = logging.getLogger(__name__)
 CACHE_TTL = 300  # 5 minutos
 
 
-# --------------------------------------------------
-# 🔥 Session otimizada com retry
-# --------------------------------------------------
 def create_session():
     session = requests.Session()
     retries = Retry(
@@ -67,6 +64,7 @@ class KeywordQueryEventListener(EventListener):
 
             cidade = geo.get("city", "Desconhecida")
             estado = geo.get("region", "")
+            country_name = geo.get("country_name", geo.get("country", ""))
             country_code = geo.get("country_code", geo.get("countryCode", "")).upper()
             ip = geo.get("ip", geo.get("query", ""))
 
@@ -85,7 +83,7 @@ class KeywordQueryEventListener(EventListener):
                 "Sua localização atual é:\n\n"
                 f"{cidade}\n"
                 f"{linha_estado}"
-                f"{country_code} {bandeira}"
+                f"{country_name} {bandeira}\n"
                 f"{linha_ip}"
             )
 
@@ -95,11 +93,11 @@ class KeywordQueryEventListener(EventListener):
             if copiar_formato == "cidade":
                 copia = cidade
             elif copiar_formato == "cidade_pais":
-                copia = f"{cidade}, {country_code}"
+                copia = f"{cidade}, {country_name}"
             elif copiar_formato == "ip":
                 copia = ip
             else:
-                copia = f"{cidade}, {estado}, {country_code}"
+                copia = f"{cidade}, {estado}, {country_name}"
 
             return RenderResultListAction([
                 ExtensionResultItem(
@@ -122,9 +120,6 @@ class KeywordQueryEventListener(EventListener):
                 )
             ])
 
-    # --------------------------------------------------
-    # 🌍 Busca com fallback
-    # --------------------------------------------------
     def fetch_location(self, extension):
 
         try:
@@ -136,9 +131,6 @@ class KeywordQueryEventListener(EventListener):
             r = extension.session.get("http://ip-api.com/json/", timeout=2)
             return r.json()
 
-    # --------------------------------------------------
-    # 🇧🇷 Emoji bandeira
-    # --------------------------------------------------
     def flag(self, code):
         if len(code) != 2:
             return ""
