@@ -9,7 +9,8 @@
   "categories": ["Utilities"],
   "preferences": [
     {
-      "name": "keyword",
+      "id": "keyword",
+      "name": "Keyword",
       "label": "Keyword para acionar a extensão",
       "type": "string",
       "default_value": "ondeestou"
