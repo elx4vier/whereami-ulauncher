@@ -1,6 +1,11 @@
 import logging
 import requests
+import time
+import json
 import os
+
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
@@ -11,109 +16,162 @@ from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAct
 
 logger = logging.getLogger(__name__)
 
+CACHE_TTL = 300  # 5 minutos
+CACHE_FILE = os.path.expanduser("~/.cache/onde_estou_cache.json")
+
+
+def create_session():
+    session = requests.Session()
+    retries = Retry(
+        total=2,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
 
 class OndeEstouExtension(Extension):
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
-
-        # 📁 Caminho absoluto da pasta da extensão
-        self.base_path = os.path.dirname(os.path.abspath(__file__))
-
-    def icon(self, name):
-        return os.path.join(self.base_path, "images", name)
+        self.session = create_session()
+        self.cache = None
+        self.cache_time = 0
 
 
 class KeywordQueryEventListener(EventListener):
 
+    def get_flag(self, code):
+        if len(code) != 2:
+            return ""
+        return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
+
+    def load_file_cache(self):
+        try:
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, "r") as f:
+                    data = json.load(f)
+                    if time.time() - data["timestamp"] < CACHE_TTL:
+                        return data["geo"]
+        except Exception:
+            pass
+        return None
+
+    def save_file_cache(self, geo):
+        try:
+            os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+            with open(CACHE_FILE, "w") as f:
+                json.dump({
+                    "timestamp": time.time(),
+                    "geo": geo
+                }, f)
+        except Exception:
+            pass
+
+    def fetch_location(self, extension):
+        now = time.time()
+
+        # 🔥 Cache em memória
+        if extension.cache and (now - extension.cache_time < CACHE_TTL):
+            return extension.cache
+
+        # 💾 Cache em arquivo
+        file_cache = self.load_file_cache()
+        if file_cache:
+            extension.cache = file_cache
+            extension.cache_time = now
+            return file_cache
+
+        # 🌍 API principal
+        try:
+            response = extension.session.get(
+                "https://ipapi.co/json/",
+                timeout=2
+            )
+            if response.status_code == 200:
+                geo = response.json()
+            else:
+                raise Exception("Falha API 1")
+        except Exception:
+            # 🔄 Fallback API alternativa
+            try:
+                response = extension.session.get(
+                    "http://ip-api.com/json/",
+                    timeout=2
+                )
+                geo = response.json()
+            except Exception:
+                raise Exception("Todas as APIs falharam")
+
+        extension.cache = geo
+        extension.cache_time = now
+        self.save_file_cache(geo)
+
+        return geo
+
     def on_event(self, event, extension):
 
         try:
-            geo = requests.get("https://ipapi.co/json/", timeout=4).json()
+            geo = self.fetch_location(extension)
 
-            if not geo or "city" not in geo:
-                return self.alert(extension, "Não foi possível obter localização")
-
-            cidade = geo.get("city", "")
+            cidade = geo.get("city", "Desconhecida")
             estado = geo.get("region", "")
-            country_code = geo.get("country_code", "").upper()
+            pais = geo.get("country_code", geo.get("countryCode", "")).upper()
+            ip = geo.get("ip", geo.get("query", ""))
 
-            # 🔧 Preferências
             mostrar_estado = extension.preferences.get("mostrar_estado", "sim")
             mostrar_bandeira = extension.preferences.get("mostrar_bandeira", "sim")
             copiar_formato = extension.preferences.get("formato_copia", "cidade_estado_pais")
+            mostrar_ip = extension.preferences.get("mostrar_ip", "sim")
 
-            # 🇧🇷 Bandeira
-            def flag(code):
-                if len(code) != 2:
-                    return ""
-                return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
+            bandeira = self.get_flag(pais) if mostrar_bandeira == "sim" else ""
 
-            bandeira = flag(country_code) if mostrar_bandeira == "sim" else ""
-
-            linha_estado = ""
-            if estado and mostrar_estado == "sim":
-                linha_estado = f"{estado}\n"
-
-            titulo = "Você está em:\n"
+            linha_estado = f"{estado}\n" if estado and mostrar_estado == "sim" else ""
+            linha_ip = f"IP: {ip}\n" if ip and mostrar_ip == "sim" else ""
 
             texto = (
-                f"{titulo}\n"
+                "Você está em:\n\n"
                 f"{cidade}\n"
                 f"{linha_estado}"
-                f"{country_code} {bandeira}"
-                f"\n"  # 👈 Espaçamento leve antes das fontes
+                f"{pais} {bandeira}\n\n"
+                f"{linha_ip}"
             )
 
-            rodape = "Fontes: ipapi.co"
+            rodape = "Fonte: ipapi.co | ip-api.com (fallback)"
 
-            # 📋 Texto copiado
+            # 📋 Formato de cópia
             if copiar_formato == "cidade":
                 copia = cidade
             elif copiar_formato == "cidade_pais":
-                copia = f"{cidade}, {country_code}"
+                copia = f"{cidade}, {pais}"
+            elif copiar_formato == "ip":
+                copia = ip
             else:
-                copia = f"{cidade}, {estado}, {country_code}"
+                copia = f"{cidade}, {estado}, {pais}"
 
             return RenderResultListAction([
                 ExtensionResultItem(
-                    icon=extension.icon("icon.png"),
-                    name=texto,
+                    icon='map-marker',
+                    name=texto.strip(),
                     description=rodape,
                     on_enter=CopyToClipboardAction(copia)
                 )
             ])
 
-        except requests.exceptions.Timeout:
-            return RenderResultListAction([
-                ExtensionResultItem(
-                    icon=extension.icon("alert.png"),
-                    name="Tempo de conexão excedido",
-                    description="Verifique sua internet",
-                    on_enter=CopyToClipboardAction("")
-                )
-            ])
-
         except Exception as e:
-            logger.error(e)
+            logger.error(f"Erro localização: {e}")
+
             return RenderResultListAction([
                 ExtensionResultItem(
-                    icon=extension.icon("error.png"),
-                    name="Erro inesperado",
-                    description="Não foi possível obter localização",
-                    on_enter=CopyToClipboardAction("")
+                    icon='dialog-error',
+                    name="Erro ao obter localização",
+                    description="Offline ou serviço indisponível",
+                    on_enter=CopyToClipboardAction("Erro")
                 )
             ])
-
-    def alert(self, extension, mensagem):
-        return RenderResultListAction([
-            ExtensionResultItem(
-                icon=extension.icon("alert.png"),
-                name=mensagem,
-                description="",
-                on_enter=CopyToClipboardAction("")
-            )
-        ])
 
 
 if __name__ == "__main__":
