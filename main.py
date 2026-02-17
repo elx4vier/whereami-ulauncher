@@ -13,10 +13,11 @@ from gi.repository import GLib
 GOOGLE_API_KEY = "AIzaSyChY5KA-9Fgzz4o-hvhny0F1YKimAFrbzo"
 CACHE_TIMEOUT = 600  # 10 minutos
 
-# Ícones SVG
-ICONE_PADRAO = "images/icon.svg"
-ICONE_LOADING = "images/loading.svg"
-ICONE_ERRO = "images/error.svg"
+# Ícones PNG
+ICONE_PADRAO = "images/icon.png"
+ICONE_LOADING = "images/loading.png"
+ICONE_ERRO = "images/error.png"
+ICONE_ALERTA = "images/alert.png"  # opcional
 
 _last_location = None
 _last_timestamp = 0
