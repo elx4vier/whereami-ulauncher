@@ -1,19 +1,9 @@
 {
-  "required_api_version": "2",
-  "name": "Where Am I?",
-  "description": "Mostra a cidade atual baseada no Geoclue",
-  "developer_name": "Xavier",
-  "icon": "images/icon.png",
-  "options": {
-    "query_debounce": 0.5
-  },
-  "preferences": [
-    {
-      "id": "whereami_kw",
-      "type": "keyword",
-      "name": "Where Am I",
-      "description": "Palavra-chave para ativar a extensão",
-      "default_value": "whereami"
-    }
-  ]
+    "name": "Onde estou?",
+    "description": "Mostra sua cidade, estado e país",
+    "developer_name": "Xavier",
+    "icon": "images/icon.png",
+    "keywords": ["Onde estou?"],
+    "launchers": ["keyword"]
 }
+
