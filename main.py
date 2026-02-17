@@ -8,8 +8,17 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.OpenAction import OpenAction
 
+# Sua chave API do IPstack
+API_KEY = "51adc2e31921227b91c2fc04190b174e"
 
-class WhereAmIIPAPI(Extension):
+# Cache para reduzir requisições
+_last_location = None
+_last_timestamp = 0
+CACHE_TIMEOUT = 600  # segundos = 10 minutos
+
+import time
+
+class WhereAmIIPstack(Extension):
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
@@ -17,24 +26,31 @@ class WhereAmIIPAPI(Extension):
 
 class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
+        global _last_location, _last_timestamp
+
+        # Verifica cache
+        if _last_location and (time.time() - _last_timestamp) < CACHE_TIMEOUT:
+            return RenderResultListAction(_last_location)
+
         try:
-            # Faz requisição à API ipapi.co
-            resp = requests.get("https://ipapi.co/json", timeout=5)
+            # Requisição ao IPstack
+            url = f"https://api.ipstack.com/check?access_key={API_KEY}"
+            resp = requests.get(url, timeout=5)
             resp.raise_for_status()
             data = resp.json()
 
             cidade = data.get("city")
-            estado = data.get("region")
+            estado = data.get("region_name")
             pais = data.get("country_name")
             lat = data.get("latitude")
             lon = data.get("longitude")
 
             if not cidade or not estado or not pais:
-                return self._mostrar_erro(extension, "Cidade/Estado/País não encontrados")
+                return self._mostrar_erro(extension, "Dados de localização incompletos")
 
-            texto = f"{cidade}, {estado} - {pais}"
+            texto = f"{cidade}, {estado} — {pais}"
 
-            resultados = [
+            itens = [
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"📍 {texto}",
@@ -43,9 +59,8 @@ class KeywordQueryEventListener(EventListener):
                 )
             ]
 
-            # Se lat/lon disponíveis, adiciona link Google Maps
-            if lat and lon:
-                resultados.append(
+            if lat is not None and lon is not None:
+                itens.append(
                     ExtensionResultItem(
                         icon="images/icon.png",
                         name="🌐 Abrir no Google Maps",
@@ -54,7 +69,11 @@ class KeywordQueryEventListener(EventListener):
                     )
                 )
 
-            return RenderResultListAction(resultados)
+            # Atualiza cache
+            _last_location = itens
+            _last_timestamp = time.time()
+
+            return RenderResultListAction(itens)
 
         except Exception as e:
             return self._mostrar_erro(extension, f"Erro ao obter localização: {e}")
@@ -71,4 +90,4 @@ class KeywordQueryEventListener(EventListener):
 
 
 if __name__ == "__main__":
-    WhereAmIIPAPI().run()
+    WhereAmIIPstack().run()
