@@ -39,13 +39,17 @@ def extrair_cidade_estado_pais(geo_data):
     return cidade, estado, pais
 
 
-class OndeEstou(Extension):
+class OndeEstouExtension(Extension):
+    """
+    Extensão Ulauncher: 'Onde estou?'
+    Keyword: Onde estou?
+    """
     def __init__(self):
         super().__init__()
-        self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
+        self.subscribe(KeywordQueryEvent, OndeEstouKeywordListener())
 
 
-class KeywordQueryEventListener(EventListener):
+class OndeEstouKeywordListener(EventListener):
     def on_event(self, event, extension):
         global _last_location, _last_timestamp
 
@@ -111,4 +115,4 @@ class KeywordQueryEventListener(EventListener):
 
 
 if __name__ == "__main__":
-    OndeEstou().run()
+    OndeEstouExtension().run()
