@@ -33,17 +33,13 @@ class OndeEstouExtension(Extension):
     def __init__(self):
         super().__init__()
         self.keyword = self.preferences.get("keyword") or "ondeestou"
-        self.subscribe(KeywordQueryEvent, OndeEstouKeywordListener(self.keyword))
-        self.subscribe(HotkeyEvent, OndeEstouHotkeyListener())
+        self.subscribe(KeywordQueryEvent, OndeEstouListener(self.keyword))
+        self.subscribe(HotkeyEvent, OndeEstouListener(self.keyword))
 
-class OndeEstouKeywordListener(EventListener):
+class OndeEstouListener(EventListener):
     def __init__(self, keyword):
         self.keyword = keyword
 
-    def on_event(self, event, extension):
-        return OndeEstouHotkeyListener().on_event(event, extension)
-
-class OndeEstouHotkeyListener(EventListener):
     def on_event(self, event, extension):
         global _last_location, _last_timestamp
 
@@ -51,7 +47,7 @@ class OndeEstouHotkeyListener(EventListener):
             return RenderResultListAction(_last_location)
 
         try:
-            # Geolocation
+            # Google Geolocation API
             url_geo = f"https://www.googleapis.com/geolocation/v1/geolocate?key={GOOGLE_API_KEY}"
             resp = requests.post(url_geo, json={"considerIp": True}, timeout=5)
             resp.raise_for_status()
@@ -60,7 +56,7 @@ class OndeEstouHotkeyListener(EventListener):
                 return self._mostrar_erro(extension, "Não foi possível obter lat/lon")
             lat, lon = loc.get("lat"), loc.get("lng")
 
-            # Geocoding
+            # Google Geocoding API
             url_rev = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={GOOGLE_API_KEY}"
             resp = requests.get(url_rev, timeout=5)
             resp.raise_for_status()
@@ -70,7 +66,7 @@ class OndeEstouHotkeyListener(EventListener):
             if not cidade or not pais:
                 return self._mostrar_erro(extension, "Não foi possível extrair cidade/estado/país")
 
-            texto = f"Onde estou? {cidade}"
+            texto = f"{cidade}"
             if estado:
                 texto += f", {estado}"
             texto += f" — {pais}"
@@ -79,7 +75,7 @@ class OndeEstouHotkeyListener(EventListener):
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"📍 {texto}",
-                    description="Clique para copiar",
+                    description="Copiado ao clicar",
                     on_enter=CopyToClipboardAction(f"{cidade}, {estado} — {pais}" if estado else f"{cidade} — {pais}")
                 )
             ]
