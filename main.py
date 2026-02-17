@@ -1,4 +1,5 @@
 import requests
+import time
 
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
@@ -8,17 +9,15 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.OpenAction import OpenAction
 
-# Sua chave API do IPstack
-API_KEY = "51adc2e31921227b91c2fc04190b174e"
+# Sua chave API do Google
+GOOGLE_API_KEY = "AIzaSyChY5KA-9Fgzz4o-hvhny0F1YKimAFrbzo"
 
 # Cache para reduzir requisições
 _last_location = None
 _last_timestamp = 0
-CACHE_TIMEOUT = 600  # segundos = 10 minutos
+CACHE_TIMEOUT = 600  # 10 minutos
 
-import time
-
-class WhereAmIIPstack(Extension):
+class WhereAmIGoogle(Extension):
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
@@ -28,25 +27,43 @@ class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
         global _last_location, _last_timestamp
 
-        # Verifica cache
+        # Usa cache se recente
         if _last_location and (time.time() - _last_timestamp) < CACHE_TIMEOUT:
             return RenderResultListAction(_last_location)
 
         try:
-            # Requisição ao IPstack
-            url = f"https://api.ipstack.com/check?access_key={API_KEY}"
+            # 1️⃣ Obter lat/lon via IPstack ou ipapi.co
+            resp = requests.get("https://ipapi.co/json/", timeout=5)
+            resp.raise_for_status()
+            ip_data = resp.json()
+            lat = ip_data.get("latitude")
+            lon = ip_data.get("longitude")
+            if lat is None or lon is None:
+                return self._mostrar_erro(extension, "Não foi possível obter lat/lon via IP")
+
+            # 2️⃣ Geocodificação reversa Google Maps
+            url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={GOOGLE_API_KEY}"
             resp = requests.get(url, timeout=5)
             resp.raise_for_status()
-            data = resp.json()
+            geo_data = resp.json()
 
-            cidade = data.get("city")
-            estado = data.get("region_name")
-            pais = data.get("country_name")
-            lat = data.get("latitude")
-            lon = data.get("longitude")
+            if not geo_data.get("results"):
+                return self._mostrar_erro(extension, "Google Maps não retornou resultados")
+
+            # Extrai cidade, estado, país
+            components = geo_data["results"][0]["address_components"]
+            cidade = estado = pais = None
+            for comp in components:
+                types = comp.get("types", [])
+                if "locality" in types:
+                    cidade = comp.get("long_name")
+                elif "administrative_area_level_1" in types:
+                    estado = comp.get("long_name")
+                elif "country" in types:
+                    pais = comp.get("long_name")
 
             if not cidade or not estado or not pais:
-                return self._mostrar_erro(extension, "Dados de localização incompletos")
+                return self._mostrar_erro(extension, "Não foi possível extrair cidade/estado/país")
 
             texto = f"{cidade}, {estado} — {pais}"
 
@@ -56,18 +73,14 @@ class KeywordQueryEventListener(EventListener):
                     name=f"📍 {texto}",
                     description="Clique para copiar",
                     on_enter=CopyToClipboardAction(texto)
+                ),
+                ExtensionResultItem(
+                    icon="images/icon.png",
+                    name="🌐 Abrir no Google Maps",
+                    description="Ver localização no mapa",
+                    on_enter=OpenAction(f"https://www.google.com/maps?q={lat},{lon}")
                 )
             ]
-
-            if lat is not None and lon is not None:
-                itens.append(
-                    ExtensionResultItem(
-                        icon="images/icon.png",
-                        name="🌐 Abrir no Google Maps",
-                        description="Ver localização no mapa",
-                        on_enter=OpenAction(f"https://www.google.com/maps?q={lat},{lon}")
-                    )
-                )
 
             # Atualiza cache
             _last_location = itens
@@ -90,4 +103,4 @@ class KeywordQueryEventListener(EventListener):
 
 
 if __name__ == "__main__":
-    WhereAmIIPstack().run()
+    WhereAmIGoogle().run()
