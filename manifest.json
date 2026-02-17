@@ -12,7 +12,7 @@
       "id": "keyword",
       "name": "Keyword",
       "label": "Keyword para acionar a extensão",
-      "type": "string",
+      "type": "keyword",
       "default_value": "ondeestou"
     }
   ],
