@@ -18,15 +18,21 @@ _last_timestamp = 0
 CACHE_TIMEOUT = 600  # segundos
 
 def extrair_cidade_estado_pais(geo_data):
-    """Extrai cidade, estado e país do JSON do Google Maps de forma robusta."""
+    """
+    Extrai apenas cidade, estado e país do JSON do Google Maps,
+    ignorando bairros ou sublocalidades.
+    """
     cidade = estado = pais = None
     for result in geo_data.get("results", []):
         for comp in result.get("address_components", []):
             types = comp.get("types", [])
-            if not cidade and any(t in types for t in ["locality", "sublocality", "postal_town"]):
+            # Cidade: apenas "locality" ou "postal_town"
+            if not cidade and any(t in types for t in ["locality", "postal_town"]):
                 cidade = comp.get("long_name")
+            # Estado
             if not estado and "administrative_area_level_1" in types:
                 estado = comp.get("long_name")
+            # País
             if not pais and "country" in types:
                 pais = comp.get("long_name")
         if cidade and estado and pais:
