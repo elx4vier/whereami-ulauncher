@@ -72,13 +72,13 @@ class OndeEstouKeywordListener(EventListener):
                 return self._mostrar_erro("Não foi possível extrair cidade/estado/país")
 
             bandeira = country_code_to_emoji(codigo_pais)
-            # Formata a descrição com cidade, estado (se houver), país, sigla e bandeira
-            local_formatado = f"{cidade}"
+            # Formata a descrição com cidade, estado (se houver) e apenas a sigla do país + bandeira
+            local_descricao = f"{cidade}"
             if estado:
-                local_formatado += f", {estado}"
-            local_formatado += f" — {pais} ({codigo_pais}) {bandeira}"
+                local_descricao += f", {estado}"
+            local_descricao += f" — {codigo_pais} {bandeira}"
 
-            # Texto completo para cópia (sem a bandeira, pois pode não copiar bem)
+            # Texto completo para cópia (sem a bandeira, com nome do país completo)
             texto_completo = f"{cidade}"
             if estado:
                 texto_completo += f", {estado}"
@@ -87,8 +87,8 @@ class OndeEstouKeywordListener(EventListener):
             itens = [
                 ExtensionResultItem(
                     icon=ICONE_PADRAO,
-                    name="Você está em:",
-                    description=local_formatado,
+                    name="Você está em",
+                    description=local_descricao,
                     on_enter=CopyToClipboardAction(texto_completo)
                 )
             ]
