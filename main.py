@@ -1,7 +1,5 @@
 import logging
 import requests
-import threading
-import time
 import os
 import tempfile
 
@@ -11,49 +9,23 @@ from ulauncher.api.shared.event import KeywordQueryEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
-from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 
 logger = logging.getLogger(__name__)
 
-CACHE_TEMPO = 300
-
 
 class OndeEstouExtension(Extension):
-
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
-        self.cache = None
-        self.cache_timestamp = 0
 
 
 class KeywordQueryEventListener(EventListener):
 
     def on_event(self, event, extension):
 
-        if extension.cache and (time.time() - extension.cache_timestamp < CACHE_TEMPO):
-            return RenderResultListAction(extension.cache)
-
-        threading.Thread(
-            target=self.buscar_dados,
-            args=(extension,),
-            daemon=True
-        ).start()
-
-        return RenderResultListAction([
-            ExtensionResultItem(
-                icon='map-marker',
-                name="Carregando localização...",
-                description="",
-                on_enter=HideWindowAction()
-            )
-        ])
-
-    def buscar_dados(self, extension):
-
         try:
             # 🌍 Localização
-            geo = requests.get("https://ipapi.co/json/", timeout=3).json()
+            geo = requests.get("https://ipapi.co/json/", timeout=4).json()
 
             cidade = geo.get("city", "")
             estado = geo.get("region", "")
@@ -67,70 +39,62 @@ class KeywordQueryEventListener(EventListener):
 
             bandeira = flag(country_code)
 
-            # 🖼 Imagem da cidade (Wikimedia thumbnail)
-            imagem_path = 'map-marker'
+            # 🖼 Buscar imagem da cidade
+            icon_path = 'map-marker'
 
             try:
                 wiki = requests.get(
                     f"https://pt.wikipedia.org/api/rest_v1/page/summary/{cidade}",
-                    timeout=3
+                    timeout=4
                 ).json()
 
                 if "thumbnail" in wiki:
                     img_url = wiki["thumbnail"]["source"]
-                    img_data = requests.get(img_url).content
+                    img_data = requests.get(img_url, timeout=4).content
 
-                    tmp_file = os.path.join(
-                        tempfile.gettempdir(),
-                        f"{cidade}.jpg"
-                    )
+                    tmp_dir = tempfile.gettempdir()
+                    icon_path = os.path.join(tmp_dir, "cidade.png")
 
-                    with open(tmp_file, "wb") as f:
+                    with open(icon_path, "wb") as f:
                         f.write(img_data)
 
-                    imagem_path = tmp_file
-
-            except:
-                pass
+            except Exception:
+                pass  # se falhar, usa ícone padrão
 
             # 📝 Montagem visual
-
             titulo = "Você está em:\n"
 
-            linha_cidade = f"{cidade}\n"
+            linha_estado = f"{estado}\n" if estado else ""
 
-            linha_estado = ""
-            if estado:
-                linha_estado = f"{estado}\n"
-
-            linha_pais = f"{country_code} {bandeira}"
-
-            texto_principal = (
+            texto = (
                 f"{titulo}\n"
-                f"{linha_cidade}"
+                f"{cidade}\n"
                 f"{linha_estado}"
-                f"{linha_pais}\n"
+                f"{country_code} {bandeira}"
             )
 
-            # Linha menor vai no description (já é menor no Ulauncher)
             rodape = "Fontes: ipapi.co • Wikimedia"
 
-            items = [
+            return RenderResultListAction([
                 ExtensionResultItem(
-                    icon=imagem_path,
-                    name=texto_principal,
+                    icon=icon_path,
+                    name=texto,
                     description=rodape,
                     on_enter=CopyToClipboardAction(f"{cidade}, {estado}, {country_code}")
                 )
-            ]
-
-            extension.cache = items
-            extension.cache_timestamp = time.time()
-
-            extension.publish_event(RenderResultListAction(items))
+            ])
 
         except Exception as e:
             logger.error(e)
+
+            return RenderResultListAction([
+                ExtensionResultItem(
+                    icon='dialog-error',
+                    name="Erro ao obter localização",
+                    description="Verifique sua conexão",
+                    on_enter=CopyToClipboardAction("Erro")
+                )
+            ])
 
 
 if __name__ == "__main__":
