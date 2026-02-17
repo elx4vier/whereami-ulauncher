@@ -3,18 +3,16 @@ import time
 
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
-from ulauncher.api.shared.event import KeywordQueryEvent
+from ulauncher.api.shared.event import KeywordQueryEvent, HotkeyEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 
-# Sua chave Google
 GOOGLE_API_KEY = "AIzaSyChY5KA-9Fgzz4o-hvhny0F1YKimAFrbzo"
 
-# Cache de 10 minutos
 _last_location = None
 _last_timestamp = 0
-CACHE_TIMEOUT = 600  # segundos
+CACHE_TIMEOUT = 600  # 10 minutos
 
 def extrair_cidade_estado_pais(geo_data):
     cidade = estado = pais = None
@@ -32,20 +30,20 @@ def extrair_cidade_estado_pais(geo_data):
     return cidade, estado, pais
 
 class OndeEstouExtension(Extension):
-    """
-    Extensão Ulauncher: 'Onde estou?'
-    Keyword configurável pelo usuário
-    """
     def __init__(self):
         super().__init__()
-        # Lê keyword configurável
         self.keyword = self.preferences.get("keyword") or "ondeestou"
         self.subscribe(KeywordQueryEvent, OndeEstouKeywordListener(self.keyword))
+        self.subscribe(HotkeyEvent, OndeEstouHotkeyListener())
 
 class OndeEstouKeywordListener(EventListener):
     def __init__(self, keyword):
         self.keyword = keyword
 
+    def on_event(self, event, extension):
+        return OndeEstouHotkeyListener().on_event(event, extension)
+
+class OndeEstouHotkeyListener(EventListener):
     def on_event(self, event, extension):
         global _last_location, _last_timestamp
 
@@ -53,7 +51,7 @@ class OndeEstouKeywordListener(EventListener):
             return RenderResultListAction(_last_location)
 
         try:
-            # Google Geolocation API
+            # Geolocation
             url_geo = f"https://www.googleapis.com/geolocation/v1/geolocate?key={GOOGLE_API_KEY}"
             resp = requests.post(url_geo, json={"considerIp": True}, timeout=5)
             resp.raise_for_status()
@@ -62,7 +60,7 @@ class OndeEstouKeywordListener(EventListener):
                 return self._mostrar_erro(extension, "Não foi possível obter lat/lon")
             lat, lon = loc.get("lat"), loc.get("lng")
 
-            # Google Geocoding API
+            # Geocoding
             url_rev = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={GOOGLE_API_KEY}"
             resp = requests.get(url_rev, timeout=5)
             resp.raise_for_status()
@@ -72,7 +70,6 @@ class OndeEstouKeywordListener(EventListener):
             if not cidade or not pais:
                 return self._mostrar_erro(extension, "Não foi possível extrair cidade/estado/país")
 
-            # Texto exibido no resultado
             texto = f"Onde estou? {cidade}"
             if estado:
                 texto += f", {estado}"
@@ -103,7 +100,6 @@ class OndeEstouKeywordListener(EventListener):
                 on_enter=None
             )
         ])
-
 
 if __name__ == "__main__":
     OndeEstouExtension().run()
