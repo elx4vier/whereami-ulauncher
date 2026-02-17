@@ -13,7 +13,8 @@ from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 
 logger = logging.getLogger(__name__)
 
-CACHE_TEMPO = 300  # 5 minutos
+CACHE_TEMPO = 300
+OPENWEATHER_KEY = "4e984b8d646f78243e905469f3ebd800"
 
 
 class OndeEstouExtension(Extension):
@@ -29,13 +30,11 @@ class KeywordQueryEventListener(EventListener):
 
     def on_event(self, event, extension):
 
-        # Se cache válido, retorna imediatamente
         if extension.cache and (time.time() - extension.cache_timestamp < CACHE_TEMPO):
             return RenderResultListAction(extension.cache)
 
-        # Busca em background
         threading.Thread(
-            target=self.buscar_localizacao,
+            target=self.buscar_dados,
             args=(extension,),
             daemon=True
         ).start()
@@ -43,106 +42,91 @@ class KeywordQueryEventListener(EventListener):
         return RenderResultListAction([
             ExtensionResultItem(
                 icon='map-marker',
-                name="Obtendo localização...",
+                name="Carregando informações...",
                 description="Aguarde um instante",
                 on_enter=HideWindowAction()
             )
         ])
 
-    def buscar_localizacao(self, extension):
+    def buscar_dados(self, extension):
 
-        headers = {"User-Agent": "Ulauncher-OndeEstou"}
+        try:
+            # 🌍 Localização + ISP
+            geo = requests.get("https://ipapi.co/json/", timeout=3).json()
 
-        apis = [
-            "https://ipapi.co/json/",
-            "http://ip-api.com/json/"
-        ]
+            cidade = geo.get("city", "Desconhecida")
+            estado = geo.get("region", "")
+            pais = geo.get("country_name", "")
+            country_code = geo.get("country_code", "").upper()
+            ip = geo.get("ip", "")
+            isp = geo.get("org", "Desconhecido")
+            timezone = geo.get("timezone", "")
+            lat = geo.get("latitude")
+            lon = geo.get("longitude")
 
-        data = None
-        fonte_dados = None
-        response = None
+            # 🇧🇷 Bandeira dinâmica
+            def flag(code):
+                if len(code) != 2:
+                    return ""
+                return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
 
-        for url in apis:
-            try:
-                response = requests.get(url, headers=headers, timeout=3)
-                if response.status_code == 200:
-                    data = response.json()
-                    fonte_dados = url
-                    break
-            except Exception as e:
-                logger.warning(f"Falha na API {url}: {e}")
+            bandeira = flag(country_code)
 
-        if not data:
+            # 🌦 Clima
+            clima = "N/D"
+            if lat and lon:
+                try:
+                    weather = requests.get(
+                        f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHER_KEY}",
+                        timeout=3
+                    ).json()
+
+                    temp = round(weather["main"]["temp"])
+                    cond = weather["weather"][0]["main"]
+
+                    emoji_map = {
+                        "Clear": "☀️",
+                        "Clouds": "☁️",
+                        "Rain": "🌧",
+                        "Thunderstorm": "⛈",
+                        "Drizzle": "🌦",
+                        "Snow": "❄️",
+                        "Mist": "🌫"
+                    }
+
+                    emoji = emoji_map.get(cond, "")
+                    clima = f"{temp}°C {emoji}"
+                except:
+                    pass
+
+            texto = (
+                "Você está em:\n\n"
+                f"{cidade}\n"
+                f"{estado}\n"
+                f"{pais} {bandeira}\n\n"
+                f"Fuso: {timezone}\n"
+                f"Clima: {clima}\n\n"
+                f"ISP: {isp}\n"
+                f"IP: {ip}"
+            )
+
             items = [
                 ExtensionResultItem(
-                    icon='error',
-                    name="Não foi possível obter localização",
-                    description="Verifique sua conexão",
-                    on_enter=HideWindowAction()
+                    icon='map-marker',
+                    name=texto,
+                    description="Dados: ipapi.co • OpenWeather",
+                    on_enter=CopyToClipboardAction(f"{cidade}, {estado}, {pais}")
                 )
             ]
+
+            extension.cache = items
+            extension.cache_timestamp = time.time()
+
             extension.publish_event(RenderResultListAction(items))
-            return
 
-        # Normalização de campos (compatível com as 2 APIs)
-        cidade = data.get('city', 'Desconhecida')
-        regiao = data.get('region') or data.get('regionName', '')
-        pais_nome = data.get('country_name') or data.get('country', '')
-        country_code = data.get('country_code') or data.get('countryCode', '')
-        ip = data.get('ip') or data.get('query', '')
-
-        country_code = country_code.upper()
-
-        # Emoji de bandeira
-        def country_flag(code):
-            if len(code) != 2:
-                return ""
-            return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
-
-        flag = country_flag(country_code)
-
-        # Linha formatada
-        linha_local = cidade
-
-        if regiao:
-            linha_local += f", {regiao}"
-
-        if country_code:
-            linha_local += f" — {country_code} {flag}"
-
-        # Detecta nome simples da API
-        if "ipapi" in fonte_dados:
-            fonte_nome = "ipapi.co"
-        else:
-            fonte_nome = "ip-api.com"
-
-        # Simulação leve de centralização
-        titulo = "Você está em:"
-        espaco = " " * max(0, (len(linha_local) - len(titulo)) // 2)
-
-        texto_principal = (
-            f"{espaco}{titulo}\n\n"
-            f"{linha_local}"
-        )
-
-        rodape = f"IP: {ip} • Dados: {fonte_nome}"
-
-        items = [
-            ExtensionResultItem(
-                icon='map-marker',
-                name=texto_principal,
-                description=rodape,
-                on_enter=CopyToClipboardAction(linha_local)
-            )
-        ]
-
-        # Salva cache
-        extension.cache = items
-        extension.cache_timestamp = time.time()
-
-        # Atualiza interface
-        extension.publish_event(RenderResultListAction(items))
+        except Exception as e:
+            logger.error(e)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     OndeEstouExtension().run()
