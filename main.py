@@ -9,7 +9,8 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.OpenAction import OpenAction
 
-# Sua chave API do Google
+# Sua chave IPstack e Google Maps
+IPSTACK_KEY = "51adc2e31921227b91c2fc04190b174e"
 GOOGLE_API_KEY = "AIzaSyChY5KA-9Fgzz4o-hvhny0F1YKimAFrbzo"
 
 # Cache para reduzir requisições
@@ -17,11 +18,10 @@ _last_location = None
 _last_timestamp = 0
 CACHE_TIMEOUT = 600  # 10 minutos
 
-class WhereAmIGoogle(Extension):
+class WhereAmIIPstackGoogle(Extension):
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
-
 
 class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
@@ -32,25 +32,26 @@ class KeywordQueryEventListener(EventListener):
             return RenderResultListAction(_last_location)
 
         try:
-            # 1️⃣ Obter lat/lon via IPstack ou ipapi.co
-            resp = requests.get("https://ipapi.co/json/", timeout=5)
+            # 1️⃣ Obter lat/lon via IPstack
+            url_ip = f"https://api.ipstack.com/check?access_key={IPSTACK_KEY}"
+            resp = requests.get(url_ip, timeout=5)
             resp.raise_for_status()
             ip_data = resp.json()
             lat = ip_data.get("latitude")
             lon = ip_data.get("longitude")
             if lat is None or lon is None:
-                return self._mostrar_erro(extension, "Não foi possível obter lat/lon via IP")
+                return self._mostrar_erro(extension, "Não foi possível obter lat/lon via IPstack")
 
             # 2️⃣ Geocodificação reversa Google Maps
-            url = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={GOOGLE_API_KEY}"
-            resp = requests.get(url, timeout=5)
+            url_geo = f"https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lon}&key={GOOGLE_API_KEY}"
+            resp = requests.get(url_geo, timeout=5)
             resp.raise_for_status()
             geo_data = resp.json()
 
             if not geo_data.get("results"):
                 return self._mostrar_erro(extension, "Google Maps não retornou resultados")
 
-            # Extrai cidade, estado, país
+            # Extrair cidade, estado e país
             components = geo_data["results"][0]["address_components"]
             cidade = estado = pais = None
             for comp in components:
@@ -103,4 +104,4 @@ class KeywordQueryEventListener(EventListener):
 
 
 if __name__ == "__main__":
-    WhereAmIGoogle().run()
+    WhereAmIIPstackGoogle().run()
