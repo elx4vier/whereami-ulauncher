@@ -3,7 +3,7 @@ import time
 
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
-from ulauncher.api.shared.event import KeywordQueryEvent, HotkeyEvent
+from ulauncher.api.shared.event import KeywordQueryEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
@@ -33,16 +33,16 @@ class OndeEstouExtension(Extension):
     def __init__(self):
         super().__init__()
         self.keyword = self.preferences.get("keyword") or "ondeestou"
-        self.subscribe(KeywordQueryEvent, OndeEstouListener(self.keyword))
-        self.subscribe(HotkeyEvent, OndeEstouListener(self.keyword))
+        self.subscribe(KeywordQueryEvent, OndeEstouKeywordListener(self.keyword))
 
-class OndeEstouListener(EventListener):
+class OndeEstouKeywordListener(EventListener):
     def __init__(self, keyword):
         self.keyword = keyword
 
     def on_event(self, event, extension):
         global _last_location, _last_timestamp
 
+        # Retorna cache se válido
         if _last_location and (time.time() - _last_timestamp) < CACHE_TIMEOUT:
             return RenderResultListAction(_last_location)
 
@@ -75,7 +75,7 @@ class OndeEstouListener(EventListener):
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"📍 {texto}",
-                    description="Copiado ao clicar",
+                    description="Clique para copiar",
                     on_enter=CopyToClipboardAction(f"{cidade}, {estado} — {pais}" if estado else f"{cidade} — {pais}")
                 )
             ]
@@ -96,6 +96,7 @@ class OndeEstouListener(EventListener):
                 on_enter=None
             )
         ])
+
 
 if __name__ == "__main__":
     OndeEstouExtension().run()
