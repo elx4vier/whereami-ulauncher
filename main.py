@@ -40,12 +40,9 @@ class OndeEstouExtension(Extension):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
 
-        # 🚀 Performance
         self.session = create_session()
         self.cache = None
         self.cache_time = 0
-
-        # 📁 Caminho base da extensão
         self.base_path = os.path.dirname(os.path.abspath(__file__))
 
     def icon(self, filename):
@@ -60,7 +57,7 @@ class KeywordQueryEventListener(EventListener):
         try:
             now = time.time()
 
-            # 🔥 Cache em memória
+            # Cache
             if extension.cache and (now - extension.cache_time < CACHE_TTL):
                 geo = extension.cache
             else:
@@ -73,23 +70,19 @@ class KeywordQueryEventListener(EventListener):
             country_code = geo.get("country_code", geo.get("countryCode", "")).upper()
             ip = geo.get("ip", geo.get("query", ""))
 
-            # 🔧 Preferências
+            # Preferências
             mostrar_estado = extension.preferences.get("mostrar_estado", "sim")
             mostrar_bandeira = extension.preferences.get("mostrar_bandeira", "sim")
             copiar_formato = extension.preferences.get("formato_copia", "cidade_estado_pais")
             mostrar_ip = extension.preferences.get("mostrar_ip", "sim")
 
-            # 🇧🇷 Bandeira dinâmica
             bandeira = self.flag(country_code) if mostrar_bandeira == "sim" else ""
 
-            # 🧱 Layout elegante
-            divisor = "────────────"
-
             linha_estado = f"{estado}\n" if estado and mostrar_estado == "sim" else ""
-            linha_ip = f"\n{divisor}\nIP: {ip}" if ip and mostrar_ip == "sim" else ""
+            linha_ip = f"\nIP: {ip}" if ip and mostrar_ip == "sim" else ""
 
             texto = (
-                "📍 Localização atual\n\n"
+                "Sua localização atual é:\n\n"
                 f"{cidade}\n"
                 f"{linha_estado}"
                 f"{country_code} {bandeira}"
@@ -98,7 +91,7 @@ class KeywordQueryEventListener(EventListener):
 
             rodape = "Fonte: ipapi.co | ip-api.com"
 
-            # 📋 Formato de cópia
+            # Formato de cópia
             if copiar_formato == "cidade":
                 copia = cidade
             elif copiar_formato == "cidade_pais":
@@ -144,7 +137,7 @@ class KeywordQueryEventListener(EventListener):
             return r.json()
 
     # --------------------------------------------------
-    # 🇧🇷 Emoji de bandeira
+    # 🇧🇷 Emoji bandeira
     # --------------------------------------------------
     def flag(self, code):
         if len(code) != 2:
