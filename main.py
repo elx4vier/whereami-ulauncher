@@ -43,20 +43,13 @@ class KeywordQueryEventListener(EventListener):
                 )
             ]
 
-            # Timeout para evitar travamento
+            # Timeout para não travar
             GLib.timeout_add(self.TIMEOUT_MS, self._timeout, extension)
 
             return RenderResultListAction(resultados)
 
         except Exception as e:
-            return RenderResultListAction([
-                ExtensionResultItem(
-                    icon="images/icon.png",
-                    name="❌ Erro ao inicializar Geoclue",
-                    description=str(e),
-                    on_enter=None
-                )
-            ])
+            return self._mostrar_erro(extension, f"Erro ao inicializar Geoclue: {e}")
 
     def _on_location_changed(self, client, pspec, extension):
         loc = client.props.location
@@ -69,6 +62,9 @@ class KeywordQueryEventListener(EventListener):
         if lat is None or lon is None:
             self._mostrar_erro(extension, "Coordenadas inválidas")
             return
+
+        # Desconecta callback para não ser chamado novamente
+        client.disconnect_by_func(self._on_location_changed)
 
         # Faz geocodificação reversa
         try:
