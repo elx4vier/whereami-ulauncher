@@ -43,8 +43,8 @@ class KeywordQueryEventListener(EventListener):
         return RenderResultListAction([
             ExtensionResultItem(
                 icon='map-marker',
-                name="Carregando...",
-                description="Buscando informações do município",
+                name="Carregando localização...",
+                description="",
                 on_enter=HideWindowAction()
             )
         ])
@@ -59,7 +59,7 @@ class KeywordQueryEventListener(EventListener):
             estado = geo.get("region", "")
             country_code = geo.get("country_code", "").upper()
 
-            # 🇧🇷 Bandeira
+            # 🇧🇷 Bandeira dinâmica
             def flag(code):
                 if len(code) != 2:
                     return ""
@@ -67,8 +67,7 @@ class KeywordQueryEventListener(EventListener):
 
             bandeira = flag(country_code)
 
-            # 📖 Wikipédia resumo
-            resumo = ""
+            # 🖼 Imagem da cidade (Wikimedia thumbnail)
             imagem_path = 'map-marker'
 
             try:
@@ -77,9 +76,6 @@ class KeywordQueryEventListener(EventListener):
                     timeout=3
                 ).json()
 
-                resumo = wiki.get("extract", "")
-
-                # Baixa imagem se existir
                 if "thumbnail" in wiki:
                     img_url = wiki["thumbnail"]["source"]
                     img_data = requests.get(img_url).content
@@ -95,11 +91,12 @@ class KeywordQueryEventListener(EventListener):
                     imagem_path = tmp_file
 
             except:
-                resumo = "Resumo não disponível."
+                pass
 
             # 📝 Montagem visual
 
             titulo = "Você está em:\n"
+
             linha_cidade = f"{cidade}\n"
 
             linha_estado = ""
@@ -108,20 +105,21 @@ class KeywordQueryEventListener(EventListener):
 
             linha_pais = f"{country_code} {bandeira}"
 
-            texto = (
+            texto_principal = (
                 f"{titulo}\n"
                 f"{linha_cidade}"
                 f"{linha_estado}"
-                f"{linha_pais}\n\n"
-                f"{resumo}\n\n"
-                f"Fontes: ipapi.co • Wikipédia"
+                f"{linha_pais}\n"
             )
+
+            # Linha menor vai no description (já é menor no Ulauncher)
+            rodape = "Fontes: ipapi.co • Wikimedia"
 
             items = [
                 ExtensionResultItem(
                     icon=imagem_path,
-                    name=texto,
-                    description="",
+                    name=texto_principal,
+                    description=rodape,
                     on_enter=CopyToClipboardAction(f"{cidade}, {estado}, {country_code}")
                 )
             ]
