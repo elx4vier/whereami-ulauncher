@@ -19,15 +19,15 @@ CACHE_TIMEOUT = 600  # segundos
 
 def extrair_cidade_estado_pais(geo_data):
     """
-    Extrai apenas cidade, estado e país do JSON do Google Maps,
-    ignorando bairros ou sublocalidades.
+    Extrai cidade/município, estado e país do JSON do Google Maps,
+    ignorando bairros e sublocalidades menores.
     """
     cidade = estado = pais = None
     for result in geo_data.get("results", []):
         for comp in result.get("address_components", []):
             types = comp.get("types", [])
-            # Cidade: apenas "locality" ou "postal_town"
-            if not cidade and any(t in types for t in ["locality", "postal_town"]):
+            # Cidade: locality > postal_town > administrative_area_level_2
+            if not cidade and any(t in types for t in ["locality", "postal_town", "administrative_area_level_2"]):
                 cidade = comp.get("long_name")
             # Estado
             if not estado and "administrative_area_level_1" in types:
@@ -73,10 +73,13 @@ class KeywordQueryEventListener(EventListener):
             geo_data_rev = resp.json()
 
             cidade, estado, pais = extrair_cidade_estado_pais(geo_data_rev)
-            if not cidade or not estado or not pais:
+            if not cidade or not pais:
                 return self._mostrar_erro(extension, "Não foi possível extrair cidade/estado/país")
 
-            texto = f"{cidade}, {estado} — {pais}"
+            texto = f"{cidade}"
+            if estado:
+                texto += f", {estado}"
+            texto += f" — {pais}"
 
             itens = [
                 ExtensionResultItem(
