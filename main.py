@@ -1,5 +1,6 @@
 import logging
 import requests
+import os
 
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
@@ -16,6 +17,12 @@ class OndeEstouExtension(Extension):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
 
+        # 📁 Caminho absoluto da pasta da extensão
+        self.base_path = os.path.dirname(os.path.abspath(__file__))
+
+    def icon(self, name):
+        return os.path.join(self.base_path, "images", name)
+
 
 class KeywordQueryEventListener(EventListener):
 
@@ -24,16 +31,19 @@ class KeywordQueryEventListener(EventListener):
         try:
             geo = requests.get("https://ipapi.co/json/", timeout=4).json()
 
+            if not geo or "city" not in geo:
+                return self.alert(extension, "Não foi possível obter localização")
+
             cidade = geo.get("city", "")
             estado = geo.get("region", "")
             country_code = geo.get("country_code", "").upper()
 
-            # 🔧 Configurações do usuário
+            # 🔧 Preferências
             mostrar_estado = extension.preferences.get("mostrar_estado", "sim")
             mostrar_bandeira = extension.preferences.get("mostrar_bandeira", "sim")
             copiar_formato = extension.preferences.get("formato_copia", "cidade_estado_pais")
 
-            # 🇧🇷 Bandeira dinâmica
+            # 🇧🇷 Bandeira
             def flag(code):
                 if len(code) != 2:
                     return ""
@@ -52,12 +62,12 @@ class KeywordQueryEventListener(EventListener):
                 f"{cidade}\n"
                 f"{linha_estado}"
                 f"{country_code} {bandeira}"
-                f"\n\n"  # 👈 Espaçamento antes das fontes
+                f"\n"  # 👈 Espaçamento leve antes das fontes
             )
 
             rodape = "Fontes: ipapi.co"
 
-            # 📋 Formato de cópia configurável
+            # 📋 Texto copiado
             if copiar_formato == "cidade":
                 copia = cidade
             elif copiar_formato == "cidade_pais":
@@ -67,24 +77,43 @@ class KeywordQueryEventListener(EventListener):
 
             return RenderResultListAction([
                 ExtensionResultItem(
-                    icon='map-marker',
+                    icon=extension.icon("icon.png"),
                     name=texto,
                     description=rodape,
                     on_enter=CopyToClipboardAction(copia)
                 )
             ])
 
-        except Exception as e:
-            logger.error(e)
-
+        except requests.exceptions.Timeout:
             return RenderResultListAction([
                 ExtensionResultItem(
-                    icon='dialog-error',
-                    name="Erro ao obter localização",
-                    description="Verifique sua conexão",
-                    on_enter=CopyToClipboardAction("Erro")
+                    icon=extension.icon("alert.png"),
+                    name="Tempo de conexão excedido",
+                    description="Verifique sua internet",
+                    on_enter=CopyToClipboardAction("")
                 )
             ])
+
+        except Exception as e:
+            logger.error(e)
+            return RenderResultListAction([
+                ExtensionResultItem(
+                    icon=extension.icon("error.png"),
+                    name="Erro inesperado",
+                    description="Não foi possível obter localização",
+                    on_enter=CopyToClipboardAction("")
+                )
+            ])
+
+    def alert(self, extension, mensagem):
+        return RenderResultListAction([
+            ExtensionResultItem(
+                icon=extension.icon("alert.png"),
+                name=mensagem,
+                description="",
+                on_enter=CopyToClipboardAction("")
+            )
+        ])
 
 
 if __name__ == "__main__":
