@@ -1,9 +1,7 @@
 import logging
 import requests
 import time
-import json
 import os
-import threading
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -12,18 +10,21 @@ from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
 from ulauncher.api.shared.event import KeywordQueryEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
-from ulauncher.api.shared.action import RenderResultListAction, CopyToClipboardAction
+from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
+from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL = 300
-CACHE_FILE = os.path.expanduser("~/.cache/onde_estou_cache.json")
+CACHE_TTL = 300  # 5 minutos
 
 
 def create_session():
     session = requests.Session()
-    retries = Retry(total=2, backoff_factor=0.3,
-                    status_forcelist=[500, 502, 503, 504])
+    retries = Retry(
+        total=2,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504]
+    )
     adapter = HTTPAdapter(max_retries=retries)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
@@ -35,13 +36,14 @@ class OndeEstouExtension(Extension):
     def __init__(self):
         super().__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
-        self.session = create_session()
-        self.base_path = os.path.dirname(os.path.abspath(__file__))
 
-        self.cached_result = None
-        self.last_fetch = 0
-        self.fetching = False
-        self.lock = threading.Lock()
+        # 🚀 Performance
+        self.session = create_session()
+        self.cache = None
+        self.cache_time = 0
+
+        # 📁 Caminho base da extensão
+        self.base_path = os.path.dirname(os.path.abspath(__file__))
 
     def icon(self, filename):
         path = os.path.join(self.base_path, "images", filename)
@@ -52,87 +54,83 @@ class KeywordQueryEventListener(EventListener):
 
     def on_event(self, event, extension):
 
-        now = time.time()
-
-        # ✅ Se já tem cache válido → retorna instantâneo
-        if extension.cached_result and (now - extension.last_fetch < CACHE_TTL):
-            return RenderResultListAction([extension.cached_result])
-
-        # 🚀 Se não está buscando ainda → inicia thread
-        with extension.lock:
-            if not extension.fetching:
-                extension.fetching = True
-                threading.Thread(
-                    target=self.background_fetch,
-                    args=(extension,),
-                    daemon=True
-                ).start()
-
-        # 🔄 Mostra loading temporário
-        return RenderResultListAction([
-            ExtensionResultItem(
-                icon=extension.icon("loading.png"),
-                name="Obtendo localização...",
-                description="Aguarde alguns instantes..."
-            )
-        ])
-
-    # ----------------------------------
-    # THREAD SEGURA
-    # ----------------------------------
-    def background_fetch(self, extension):
-
         try:
-            geo = self.fetch_location(extension)
+            now = time.time()
+
+            # 🔥 Cache em memória
+            if extension.cache and (now - extension.cache_time < CACHE_TTL):
+                geo = extension.cache
+            else:
+                geo = self.fetch_location(extension)
+                extension.cache = geo
+                extension.cache_time = now
 
             cidade = geo.get("city", "Desconhecida")
             estado = geo.get("region", "")
-            pais = geo.get("country_code", geo.get("countryCode", "")).upper()
+            country_code = geo.get("country_code", geo.get("countryCode", "")).upper()
             ip = geo.get("ip", geo.get("query", ""))
 
-            bandeira = self.flag(pais)
+            # 🔧 Preferências
+            mostrar_estado = extension.preferences.get("mostrar_estado", "sim")
+            mostrar_bandeira = extension.preferences.get("mostrar_bandeira", "sim")
+            copiar_formato = extension.preferences.get("formato_copia", "cidade_estado_pais")
+            mostrar_ip = extension.preferences.get("mostrar_ip", "sim")
+
+            # 🇧🇷 Bandeira
+            bandeira = self.flag(country_code) if mostrar_bandeira == "sim" else ""
+
+            linha_estado = f"{estado}\n" if estado and mostrar_estado == "sim" else ""
+            linha_ip = f"\nIP: {ip}" if ip and mostrar_ip == "sim" else ""
 
             texto = (
                 "Você está em:\n\n"
                 f"{cidade}\n"
-                f"{estado}\n"
-                f"{pais} {bandeira}\n\n"
-                f"IP: {ip}"
-            ).strip()
-
-            item = ExtensionResultItem(
-                icon=extension.icon("icon.png"),
-                name=texto,
-                description="Fonte: ipapi.co | ip-api.com",
-                on_enter=CopyToClipboardAction(f"{cidade}, {estado}, {pais}")
+                f"{linha_estado}"
+                f"{country_code} {bandeira}"
+                f"{linha_ip}\n"
             )
 
-            extension.cached_result = item
-            extension.last_fetch = time.time()
+            rodape = "Fonte: ipapi.co | ip-api.com"
+
+            # 📋 Formato de cópia
+            if copiar_formato == "cidade":
+                copia = cidade
+            elif copiar_formato == "cidade_pais":
+                copia = f"{cidade}, {country_code}"
+            elif copiar_formato == "ip":
+                copia = ip
+            else:
+                copia = f"{cidade}, {estado}, {country_code}"
+
+            return RenderResultListAction([
+                ExtensionResultItem(
+                    icon=extension.icon("icon.png"),
+                    name=texto.strip(),
+                    description=rodape,
+                    on_enter=CopyToClipboardAction(copia)
+                )
+            ])
 
         except Exception as e:
+            logger.error(f"Erro localização: {e}")
 
-            logger.error(f"Erro async: {e}")
+            return RenderResultListAction([
+                ExtensionResultItem(
+                    icon=extension.icon("error.png"),
+                    name="Erro ao obter localização",
+                    description="Verifique sua conexão",
+                    on_enter=CopyToClipboardAction("Erro")
+                )
+            ])
 
-            extension.cached_result = ExtensionResultItem(
-                icon=extension.icon("error.png"),
-                name="Erro ao obter localização",
-                description="Offline ou serviço indisponível",
-                on_enter=CopyToClipboardAction("Erro")
-            )
-
-        finally:
-            with extension.lock:
-                extension.fetching = False
-
-    # ----------------------------------
-    # Busca API
-    # ----------------------------------
+    # 🌍 Busca com fallback
     def fetch_location(self, extension):
 
         try:
             r = extension.session.get("https://ipapi.co/json/", timeout=2)
-            return r.json()
+            if r.status_code == 200:
+                return r.json()
+            raise Exception("API principal falhou")
         except Exception:
             r = extension.session.get("http://ip-api.com/json/", timeout=2)
             return r.json()
