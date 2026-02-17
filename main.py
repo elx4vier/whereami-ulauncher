@@ -15,7 +15,7 @@ _last_timestamp = 0
 CACHE_TIMEOUT = 600  # 10 minutos
 
 def extrair_cidade_estado_pais(geo_data):
-    cidade = estado = pais = None
+    cidade = estado = pais = codigo_pais = None
     for result in geo_data.get("results", []):
         for comp in result.get("address_components", []):
             types = comp.get("types", [])
@@ -25,9 +25,16 @@ def extrair_cidade_estado_pais(geo_data):
                 estado = comp.get("long_name")
             if not pais and "country" in types:
                 pais = comp.get("long_name")
+                codigo_pais = comp.get("short_name")  # Ex: "BR"
         if cidade and estado and pais:
             break
-    return cidade, estado, pais
+    return cidade, estado, pais, codigo_pais
+
+def country_code_to_emoji(code):
+    """Converte código de país (ex: BR) em emoji de bandeira 🇧🇷"""
+    if not code or len(code) != 2:
+        return ""
+    return chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
 
 class OndeEstouExtension(Extension):
     def __init__(self):
@@ -62,15 +69,17 @@ class OndeEstouKeywordListener(EventListener):
             resp.raise_for_status()
             geo_data_rev = resp.json()
 
-            cidade, estado, pais = extrair_cidade_estado_pais(geo_data_rev)
+            cidade, estado, pais, codigo_pais = extrair_cidade_estado_pais(geo_data_rev)
             if not cidade or not pais:
                 return self._mostrar_erro(extension, "Não foi possível extrair cidade/estado/país")
+
+            bandeira = country_code_to_emoji(codigo_pais)
 
             itens = [
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"📍 {cidade}",
-                    description=f"{estado}, {pais}" if estado else f"{pais}",
+                    description=f"{estado}, {pais} {bandeira}" if estado else f"{pais} {bandeira}",
                     on_enter=CopyToClipboardAction(f"{cidade}, {estado} — {pais}" if estado else f"{cidade} — {pais}")
                 )
             ]
