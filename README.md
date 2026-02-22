@@ -1,7 +1,6 @@
 # Where Am I? – Ulauncher Extension
 
-Quickly shows your public location via IP (city, region, country, coordinates, IP).  
-Press Enter to copy a compact summary.
+Quickly shows your location via IP (city, region, country, coordinates, IP).  
 
 ---
 
@@ -19,7 +18,7 @@ Press Enter to copy a compact summary.
 ## Installation
 
 - Via Ulauncher → Extensions → Add:
-  `https://github.com/yourusername/ulauncher-whereami`
+  `https://github.com/elx4vier/whereami-ulauncher`
 
 - Or clone into:
   `~/.local/share/ulauncher/extensions/`
@@ -49,31 +48,3 @@ Ulauncher → Preferences → Extensions
 - Uses: ip-api, freeipapi, ipapi, ipinfo
 - First valid response is cached (10 min)
 - Auto-detects system language
-
----
-
-## Translation
-
-Add files in `translations/`:
-
-```json
-{
-  "title": "Where Am I?",
-  "unknown": "Unknown",
-  "error": "Error",
-  "source": "Source",
-  "copy_format": "{city}, {region}, {country} (IP: {ip})"
-}
-```
-
----
-
-## License
-
-MIT
-
-## Credits
-
-Xavier  
-Feather Icons  
-Geolocation APIs
