@@ -18,8 +18,6 @@ from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAct
 logger = logging.getLogger(__name__)
 CACHE_TTL = 600
 
-
-# 🌍 Detecta idioma do sistema
 def get_lang():
     try:
         lang = locale.getdefaultlocale()[0]
@@ -27,42 +25,30 @@ def get_lang():
     except Exception:
         return "en"
 
-
-# 📦 Traduções com fallback inteligente
 def load_translation(base_path, lang):
     try:
         translations_path = os.path.join(base_path, "translations")
-
         langs_to_try = []
-
         if lang:
             langs_to_try.append(lang)
-
             if "_" in lang:
                 langs_to_try.append(lang.split("_")[0])
-
         langs_to_try.append("en")
-
         for l in langs_to_try:
             path = os.path.join(translations_path, f"{l}.json")
-
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as f:
                     return json.load(f)
-
     except Exception:
         pass
-
     return {
-        "title": "Where Am I?",
+        "title": "You are in:",
         "unknown": "Unknown",
-        "error": "Error",
+        "error": "Couldn't get your location",
         "source": "Source",
         "copy_format": "{city}, {region}, {country} (IP: {ip})"
     }
 
-
-# 🌐 Sessão HTTP
 def create_session():
     session = requests.Session()
     retries = Retry(total=0, backoff_factor=0.1, status_forcelist=[429, 500, 502, 503, 504])
@@ -71,18 +57,13 @@ def create_session():
     session.mount("https://", adapter)
     return session
 
-
 class WhereAmIExtension(Extension):
     def __init__(self):
         super().__init__()
-
         self.base_path = os.path.dirname(os.path.abspath(__file__))
-
         self.lang = get_lang()
         self.t = load_translation(self.base_path, self.lang)
-
-        self.keyword = self.preferences.get("kw") or "l"
-
+        
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
         self.subscribe(PreferencesUpdateEvent, PreferencesEventListener())
 
@@ -92,24 +73,21 @@ class WhereAmIExtension(Extension):
 
     def icon(self, filename):
         path = os.path.join(self.base_path, "images", filename)
-        if os.path.exists(path):
-            return path
-        return os.path.join(self.base_path, "images", "icon.png")
-
+        return path if os.path.exists(path) else os.path.join(self.base_path, "images", "icon.png")
 
 class PreferencesEventListener(EventListener):
     def on_event(self, event, extension):
-        extension.keyword = event.preferences.get("kw") or "l"
-
+        extension.t = load_translation(extension.base_path, get_lang())
 
 class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
+        keyword = extension.preferences.get("kw") or "l"
+        
+        if event.get_keyword() != keyword:
+            return RenderResultListAction([])
+
         try:
-            if event.get_keyword() != extension.keyword:
-                return RenderResultListAction([])
-
             now = time.time()
-
             if extension.cache and (now - extension.cache_time < CACHE_TTL):
                 geo = extension.cache
             else:
@@ -118,7 +96,6 @@ class KeywordQueryEventListener(EventListener):
                 extension.cache_time = now
 
             t = extension.t
-
             cidade = geo.get("city") or t["unknown"]
             estado = geo.get("region") or ""
             code = geo.get("country_code") or ""
@@ -130,42 +107,26 @@ class KeywordQueryEventListener(EventListener):
             pais_sigla = code.upper() if code else "??"
             bandeira = self.flag(code)
 
-            # 🧾 TEXTO PRINCIPAL (GRANDE)
-            linhas = [t["title"], "", f"{cidade}"]
-
+            # Estrutura com os "enters" (linhas vazias) solicitados
+            linhas = [t["title"], ""] # Enter após o título
+            linhas.append(f"{cidade}")
             if estado:
                 linhas.append(estado)
-
-            # país
             linhas.append(f"{pais_sigla} {bandeira}")
-
-            # linha vazia após país
-            linhas.append("")
-
+            linhas.append("") # Enter após o país
+            
             texto_principal = "\n".join(linhas)
 
-            # 🔽 DESCRIÇÃO (MENOR): coord → IP → fonte
+            # Descrição sem a palavra "Coords"
             desc_linhas = []
-
             if lat and lon:
                 desc_linhas.append(f"{lat}, {lon}")
-
             desc_linhas.append(f"IP: {ip}")
             desc_linhas.append(f"{t['source']}: {provider}")
-
             descricao = " • ".join(desc_linhas)
 
-            # 📋 Texto para copiar
-            copia = t.get(
-                "copy_format",
-                "{city}, {region}, {country} (IP: {ip})"
-            ).format(
-                city=cidade,
-                region=estado,
-                country=pais_sigla,
-                ip=ip,
-                lat=lat or "",
-                lon=lon or ""
+            copia = t.get("copy_format", "{city}, {region}, {country} (IP: {ip})").format(
+                city=cidade, region=estado, country=pais_sigla, ip=ip, lat=lat or "", lon=lon or ""
             )
 
             return RenderResultListAction([
@@ -179,12 +140,11 @@ class KeywordQueryEventListener(EventListener):
 
         except Exception as e:
             logger.error(f"Erro: {e}")
-
             return RenderResultListAction([
                 ExtensionResultItem(
                     icon=extension.icon("icon.png"),
                     name=extension.t["error"],
-                    description="",
+                    description=str(e),
                     on_enter=None
                 )
             ])
@@ -196,59 +156,29 @@ class KeywordQueryEventListener(EventListener):
             ("https://ipapi.co/json/", "ipapi.co", 2),
             ("https://ipinfo.io/json", "ipinfo.io", 3)
         ]
-
         for url, name, timeout in apis:
             try:
                 r = extension.session.get(url, timeout=timeout)
-
-                if r.status_code != 200:
-                    continue
-
+                if r.status_code != 200: continue
                 data = r.json()
+                if data.get("status") == "fail" or "error" in data: continue
 
-                if data.get("status") == "fail" or "error" in data:
-                    continue
-
-                lat = (
-                    data.get("lat")
-                    or data.get("latitude")
-                    or (data.get("loc").split(",")[0] if data.get("loc") else None)
-                )
-
-                lon = (
-                    data.get("lon")
-                    or data.get("longitude")
-                    or (data.get("loc").split(",")[1] if data.get("loc") else None)
-                )
+                lat = data.get("lat") or data.get("latitude") or (data.get("loc").split(",")[0] if data.get("loc") else None)
+                lon = data.get("lon") or data.get("longitude") or (data.get("loc").split(",")[1] if data.get("loc") else None)
 
                 return {
                     "ip": data.get("query") or data.get("ip") or data.get("ipAddress"),
                     "city": data.get("city") or data.get("cityName"),
                     "region": data.get("regionName") or data.get("region"),
                     "country_code": (data.get("countryCode") or data.get("country_code") or "")[:2],
-                    "lat": lat,
-                    "lon": lon,
-                    "provider": name
+                    "lat": lat, "lon": lon, "provider": name
                 }
-
-            except Exception:
-                continue
-
-        return {
-            "city": None,
-            "region": None,
-            "ip": "N/A",
-            "country_code": "",
-            "lat": None,
-            "lon": None,
-            "provider": "Unavailable"
-        }
+            except Exception: continue
+        return {"city": None, "region": None, "ip": "N/A", "country_code": "", "lat": None, "lon": None, "provider": "Unavailable"}
 
     def flag(self, code):
-        if not code or len(code) != 2:
-            return ""
+        if not code or len(code) != 2: return ""
         return chr(ord(code[0].upper()) + 127397) + chr(ord(code[1].upper()) + 127397)
-
 
 if __name__ == "__main__":
     WhereAmIExtension().run()
