@@ -26,11 +26,6 @@ Quickly shows your location via IP (city, region, country, coordinates, IP).
   git clone https://github.com/elx4vier/whereami-ulauncher.git ~/.local/share/ulauncher/extensions/whereami
   ```
 
-- **Or install via terminal with Ulauncher CLI:**  
-  ```bash
-  ulauncher-extension install https://github.com/elx4vier/whereami-ulauncher
-  ```
-
 ---
 
 ## Usage
