@@ -31,9 +31,6 @@ Quickly shows your location via IP (city, region, country, coordinates, IP).
 2. Type `l`
 3. Press Enter to copy result
 
-**Example:**
-Berlin, Berlin, Germany (IP: 123.45.67.89)
-
 ---
 
 ## Config
