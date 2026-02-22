@@ -1,0 +1,7 @@
+{
+    "title": "Vous êtes à :",
+    "unknown": "Inconnu",
+    "error": "Impossible d'obtenir votre position",
+    "source": "Source",
+    "copy_format": "{city}, {region}, {country} (IP: {ip})"
+}

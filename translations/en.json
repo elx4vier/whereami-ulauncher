@@ -1,0 +1,7 @@
+{
+    "title": "You are in:",
+    "unknown": "Unknown",
+    "error": "Couldn't get your location",
+    "source": "Source",
+    "copy_format": "{city}, {region}, {country} (IP: {ip})"
+}
